@@ -1,0 +1,21 @@
+{
+	"name": "hands-on-hello-world",
+	"version": "0.0.1",
+	"description": "Testing serverless offline.",
+	"author": "me",
+	"repository": {
+		"type": "git",
+		"url": "git://github.com/"
+	},
+	"scripts": {
+		"start": "./node_modules/.bin/serverless offline -s dev",
+		"debug": "export SLS_DEBUG=* && node --inspect ./node_modules/.bin/serverless offline -s dev",
+		"test": "mocha"
+	},
+	"dependencies": {},
+	"devDependencies": {
+		"mocha": "3.1.2",
+		"serverless": "1.12.1",
+		"serverless-offline": "^3.13.5"
+	}
+}
