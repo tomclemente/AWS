@@ -9,9 +9,11 @@ var connection = mysql.createConnection({
 
 exports.lambdaHandler = async (event, context) => {
 
-    //console.log('Received event:', JSON.stringify(event, null, 2));
-    //let username = event.requestContext.authorizer.claims.username;
-    let username = 'tomas';
+    let username = event.requestContext.authorizer.claims.username;    
+    if (username == null) {
+        throw new Error("Username is missing. Not authenticated.");
+    }
+    
     console.log('User ID is: ', username);
 
     let body;
@@ -21,12 +23,10 @@ exports.lambdaHandler = async (event, context) => {
         'Content-Type': 'application/json',
     };
 
-
     try {
-
-        connection.query('SELECT 1', function(error, results, fields) {
+        connection.query('SELECT 1', function(error, results, fields) { //test the connection first to avoid error
             if (error) {
-                connection.connect(function(err) {
+                connection.connect(function(err) { //connect once we know there's no existing connection
                     if (err) {
                         throw new Error("Unable to connect to the DB");
                     }
@@ -35,26 +35,20 @@ exports.lambdaHandler = async (event, context) => {
         });
 
         body = await new Promise((resolve, reject) => {
-
             let sql;
             switch (event.httpMethod) {
-
-
                 case 'GET':
                     sql = "SELECT * FROM productchannel where userid = '" + username + "'";
                     break;
-
                 case 'POST':
                     let params = JSON.parse(event["body"]);
                     let product = params.product;
                     let channel = params.channel;
-
                     sql = "INSERT INTO productchannel (userid, product, channel) \
                      VALUES ('" + username + "', '" + product + "', '" + channel + "')";
-                    break;
+                    break;                    
                 default:
                     throw new Error(`Unsupported method "${event.httpMethod}"`);
-
             }
 
             connection.query(sql, function(err, result) {
@@ -64,9 +58,7 @@ exports.lambdaHandler = async (event, context) => {
                 }
                 connection.end();
                 resolve(result);
-
             });
-            //})
         });
 
     } catch (err) {
