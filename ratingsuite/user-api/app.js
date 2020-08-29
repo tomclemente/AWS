@@ -1,5 +1,5 @@
 var mysql = require('mysql');
-var AWS = require('aws-sdk');
+const AWS = require('aws-sdk');
 
 var connection = mysql.createConnection({
     host: process.env.RDS_ENDPOINT,
@@ -54,7 +54,14 @@ exports.handler = async (event, context) => {
                 
                 case 'DELETE': 
                     sql = "DELETE FROM UserMaster where userid = '" + username + "'";
-                    executeQuery(sql).then(resolve,reject); 
+                    
+                    executeQuery(sql).then(function(){ 
+                        const cognito = new AWS.CognitoIdentityServiceProvider({ region: process.env.REGION });
+                        cognito.adminDeleteUser({
+                            UserPoolId: process.env.COGNITO_POOLID,
+                            Username: 'sample', //replace to username, use sample for testing purposes to avoid recreating tokens.
+                        }).promise().then(resolve,reject);
+                    });  
                 break;
                     
                 default:
@@ -86,17 +93,16 @@ function executeQuery(sql) {
             resolve(result);
         });
     });
-}
-
+};
 
 function updateUserAttribute(name, value, username, userPoolId){
-    let cognitoISP = new AWS.CognitoIdentityServiceProvider({ region: 'us-east-1' });
+    let cognitoISP = new AWS.CognitoIdentityServiceProvider({ region: process.env.REGION });
     return new Promise((resolve, reject) => {
         let params = {
             UserAttributes: [
                 {
-                    Name: name,     // name of attribute
-                    Value: value    // the new attribute value
+                    Name: name,
+                    Value: value 
                 }
             ],
             UserPoolId: userPoolId,
@@ -106,7 +112,7 @@ function updateUserAttribute(name, value, username, userPoolId){
         cognitoISP.adminUpdateUserAttributes(params, (err, data) => err ? 
         reject(err) : resolve(data));
     });
-}
+};
 
 function insertUserMaser(params,username){
     return new Promise((resolve, reject) => {
@@ -123,4 +129,4 @@ function insertUserMaser(params,username){
 
         executeQuery(sql).then(resolve,reject);
     });
-}
+};
