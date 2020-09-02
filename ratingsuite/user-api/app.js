@@ -1,5 +1,6 @@
 var mysql = require('mysql');
-const AWS = require('aws-sdk');
+var AWS = require('aws-sdk');
+var sourceEmail = "noreply@ratingsuite.com";
 
 var connection = mysql.createConnection({
     host: process.env.RDS_ENDPOINT,
@@ -41,7 +42,10 @@ exports.handler = async (event, context) => {
 
                 case 'POST': // Read user details from the auth token
                             // Create an entry in usermaster
-                    insertUserMaser(params,username).then(resolve,reject);
+                    insertUserMaser(params,username).then(function() {
+                        var emailParam = generateWelcomeParam(username);
+                        sendEmail(emailParam).then(resolve,reject);
+                    });
                 break;
                     
                 case 'PUT': // Update cognito record and usermaster table        
@@ -60,7 +64,10 @@ exports.handler = async (event, context) => {
                         cognito.adminDeleteUser({
                             UserPoolId: process.env.COGNITO_POOLID,
                             Username: 'sample', //replace to username, use sample for testing purposes to avoid recreating tokens.
-                        }).promise().then(resolve,reject);
+                        }).promise().then(function(){
+                            var emailParam = generateGoodbyeParam(username);
+                            sendEmail(emailParam).then(resolve,reject);
+                        });
                     });  
                 break;
                     
@@ -130,3 +137,57 @@ function insertUserMaser(params,username){
         executeQuery(sql).then(resolve,reject);
     });
 };
+
+function sendEmail(params) {
+    return new Promise((resolve, reject) => {
+        var ses = new AWS.SES({region: 'us-east-1'});
+        ses.sendEmail(params, function (err, data) {
+            if (err) {
+                console.log(err);
+                reject(err);
+            } else {
+                console.log(data);
+                resolve(data);
+            }
+        });
+    });
+};
+
+function generateWelcomeParam(email) {
+
+    var param = {
+        Destination: {
+            ToAddresses: [email]
+        },
+        Message: {
+            Body: {
+                Text: { Data: "Welcome to RatingSuite!"
+
+                }
+            },
+            Subject: { Data: "Welcome Email" }
+        },
+        Source: sourceEmail
+    };
+
+    return param;
+}
+
+function generateGoodbyeParam(email) {
+    var param = {
+        Destination: {
+            ToAddresses: [email]
+        },
+        Message: {
+            Body: {
+                Text: { Data: "Sad to see you go!"
+
+                }
+            },
+            Subject: { Data: "Bye Email" }
+        },
+        Source: sourceEmail
+    };
+
+    return param;
+}
