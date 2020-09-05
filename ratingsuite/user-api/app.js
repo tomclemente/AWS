@@ -12,6 +12,7 @@ var connection = mysql.createConnection({
 var sql;
 var userPoolData;
 var subscriptionData;
+var activeSubscriptionData;
 var userMasterData;
 var notificationData;
 var deletePromises = [];
@@ -78,99 +79,34 @@ exports.handler = async (event, context) => {
                     deletePromises.push(getNotification());
                     
                     Promise.all(deletePromises).then(function() {
-                        if (userPoolData == undefined && userPoolData.idUserPool == undefined) {
-                            getSubscription(userPoolData.idUserPool);
-                            
-                            if ((userPoolData.type == 'user' && subscriptionData.subscriptionType =='pp1') ||
-                                (userPoolData.type == 'admin' && userMasterData.usertype != 'E')) {
-                                
-                                updateCancelledSubscription(userPoolData.idUserPool);
-                            }
+                        if (userPoolData != undefined && userPoolData.idUserPool != undefined) {
+                            getSubscription(userPoolData.idUserPool).then(function() {
+                                if ((userPoolData.type == 'user' && 
+                                    subscriptionData != undefined && subscriptionData.subscriptionType =='pp1') ||
+                                    (userPoolData.type == 'admin' && userMasterData.usertype != 'E')) {
+                                    
+                                    updateCancelledSubscription(userPoolData.idUserPool).then(resolve,reject);
+                                }
+                            });
                         }
                         
-                        if (notificationData.flag == '1') {
+                        //send an email and delete cognito user pool
+                        if (notificationData != undefined && notificationData.flag == '1') {
                             deleteCognitoUser();
                             var emailParam = generateGoodbyeParam();
                             sendEmail(emailParam).then(resolve,reject);
                         }      
-                    }).then(function() {
-                      subscriptionCleanup();  
-                    });
-                    
-                    
 
-                                            
-                    
-                  //  sql = "SELECT * FROM UserMaster where userid = '" + username + "'";                    
-//                    executeQuery(sql).then(function(data) { 
-//                    
-//                        userMasterData = data[0];
-//                        console.log("userMasterData : ", userMasterData);
-//                        
-//                        sql = "SELECT * FROM UserPool where userid = '" + username + "'";
-//                        executeQuery(sql).then(function(data) { 
-//                        
-//                            userPoolData = data[0];
-//                            console.log("userPoolData : ", userPoolData);
-//
-//                            sql = "SELECT * FROM Subscription where idUserPool = '" + data[0].idUserPool + "'";
-//                            executeQuery(sql).then(function(data) { 
-//                            
-//                            subscriptionData = data[0];
-//                            console.log("subscriptionData : ", subscriptionData);
-//
-//                            if (subscriptionData == undefined || subscriptionData == null) {
-//
-//
-//                            }
-//
-//                            if ((userPoolData.type == 'user' && subscriptionData.subscriptionType =='pp1') ||
-//                                (userPoolData.type == 'admin' && userMasterData.usertype != 'E')) {
-//
-//                                sql = "UPDATE Subscription SET subscriptionStatus = 'cancelled' where idUserPool = '" + userPoolData.idUserPool + "'";
-//                                    executeQuery(sql).then(function(data) { 
-//
-//                                });
-//                            }
-//
-//                                sql = "SELECT * FROM Subscription where upid = '" + username + "' and subscriptionStatus = 'active'";
-//                                executeQuery(sql).then(function(data) {   
-//                                    if (data == undefined || data == null) {
-//                                        sql = "DELETE FROM UserProduct  where upid = '" + username + "'";
-//                                        executeQuery(sql).then(resolve,reject);
-//
-//                                        sql = "DELETE FROM ProductMaster  where upid = '" + username + "'";
-//                                        executeQuery(sql).then(resolve,reject);
-//                                    }   
-//                                });
-//
-//
-//                                sql = "SELECT * FROM Notification where userid = '" + username + "'";
-//                                executeQuery(sql).then(function(data) {   
-//                                
-//                                    console.log("Notification data : ", data[0]);
-//                                    if (data == undefined || data == null) {
-//                                        resolve(data);
-//                                    }
-//                                    else if (data.flag == '1') {
-//                                        const cognito = new AWS.CognitoIdentityServiceProvider({ region: process.env.REGION });
-//                                        cognito.adminDeleteUser({
-//                                            UserPoolId: process.env.COGNITO_POOLID,
-//                                            Username: 'sample', 
-//                                            
-//                                        }).promise().then(function(){
-//                                            var emailParam = generateGoodbyeParam(username);
-//                                            sendEmail(emailParam).then(resolve,reject);
-//                                        });
-//                                    }
-//                                });
-//
-//                                 sql = "DELETE FROM UserMaster where userid = '" + username + "'";
-//                                 executeQuery(sql).then(resolve, reject);
-//                            });
-//                        }); 
-//                    });  
-                    
+                    }).then(function() { //do some cleanup
+                        deleteUserMaster();
+                    }).then(function() { 
+                        getActiveSubscription(username).then(function() {
+                            if (activeSubscriptionData == undefined || activeSubscriptionData == null) {
+                                deleteUserProduct(username);
+                                deleteProductMaster(username);
+                            }                            
+                        });
+                    });     
                     
                 break;
                     
@@ -192,6 +128,11 @@ exports.handler = async (event, context) => {
         headers,
     };
 };
+
+function deleteUserMaster() {
+    sql = "DELETE FROM UserMaster where userid = '" + username + "'";
+    return executeQuery(sql);
+}
 
 function getUserMaster() {
     sql = "SELECT * FROM UserMaster where userid = '" + userid + "'";                    
@@ -234,24 +175,27 @@ function deleteCognitoUser() {
     const cognito = new AWS.CognitoIdentityServiceProvider({ region: process.env.REGION });
     cognito.adminDeleteUser({
         UserPoolId: process.env.COGNITO_POOLID,
-        Username: 'sample', 
+        Username: 'sample', //should be username, for testing purposes only
     });
 }
 
-function subscriptionCleanup(id) {    
+function getActiveSubscription(id) {    
     sql = "SELECT * FROM Subscription where upid = '" + id + "' and subscriptionStatus = 'active'";
-    executeQuery(sql).then(function(data) {   
-        if (data == undefined || data == null) {
-            sql = "DELETE FROM UserProduct  where upid = '" + id + "'";
-            executeQuery(sql);
-            
-            sql = "DELETE FROM ProductMaster  where upid = '" + id + "'";
-            executeQuery(sql);
-        }   
+    return executeQuery(sql).then(function(result) {
+        subscriptionData = result[0];
+        console.log("activeSubscriptionData: ", activeSubscriptionData);
     });
 }
 
+function deleteUserProduct(id) {
+    sql = "DELETE FROM UserProduct  where upid = '" + id + "'";
+    return executeQuery(sql);
+}
 
+function deleteProductMaster(id) {
+    sql = "DELETE FROM ProductMaster  where upid = '" + id + "'";
+    return executeQuery(sql);
+}
 
 function executeQuery(sql) {
     return new Promise((resolve, reject) => {
@@ -261,7 +205,6 @@ function executeQuery(sql) {
                 console.log("SQL Error: " + err);
                 reject(err);
             }
-            //console.log("SQL Result: " + result.JSON);
             resolve(result);
         });
     });
@@ -272,12 +215,6 @@ function updateUserAttribute(userAttributes, username, userPoolId){
     return new Promise((resolve, reject) => {
         console.log("userAttributes: ", userAttributes);
         let params = {
-            // UserAttributes: [
-            //     {
-            //         Name: name,
-            //         Value: value 
-            //     }
-            // ],
             UserAttributes: userAttributes,
             UserPoolId: userPoolId,
             Username: username
