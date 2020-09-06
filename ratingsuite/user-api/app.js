@@ -1,5 +1,6 @@
 var mysql = require('mysql');
 var AWS = require('aws-sdk');
+
 var sourceEmail = "noreply@ratingsuite.com";
 
 var connection = mysql.createConnection({
@@ -10,14 +11,17 @@ var connection = mysql.createConnection({
 });
 
 var sql;
-var userPoolData;
-var subscriptionData;
-var activeSubscriptionData;
-var userMasterData;
-var notificationData;
-var deletePromises = [];
-var username;
 var userid;
+var username;
+var deletePromises = [];
+var userPoolData;
+var userMasterData;
+var subscriptionData;
+var notificationData;
+var userProductChannelData;
+var activeSubscriptionData;
+var productChannelMappingData;
+
 
 exports.handler = async (event, context) => {
 
@@ -31,7 +35,6 @@ exports.handler = async (event, context) => {
     if (username == null) {
         throw new Error("Username missing. Not authenticated.");
     }
-    
     
     let body;
     let statusCode = '200';
@@ -57,7 +60,7 @@ exports.handler = async (event, context) => {
 
                         sql = "SELECT * FROM UserPool where userid = '" + username + "'";
                         executeQuery(sql).then(function(data) {
-                            insertNotification(username, data.upid, params);
+                            //insertNotification(username, data.upid, params);
 
                             var emailParam = generateWelcomeParam(username);
                             sendEmail(emailParam).then(resolve,reject);
@@ -99,12 +102,27 @@ exports.handler = async (event, context) => {
 
                     }).then(function() { //do some cleanup
                         deleteUserMaster();
+
                     }).then(function() { 
                         getActiveSubscription(username).then(function() {
                             if (activeSubscriptionData == undefined || activeSubscriptionData == null) {
                                 deleteUserProduct(username);
-                                deleteProductMaster(username);
                             }                            
+                        }).then(function() {
+
+                            if (activeSubscriptionData != undefined && activeSubscriptionData.upid != null) {
+                                getUserProductChannel(activeSubscriptionData.upid).then(function() {
+
+                                    if (userProductChannelData != undefined && userProductChannelData.upcid != null) {
+                                        getProductChannelMapping(userProductChannelData.upcid).then(function() {
+
+                                            if (productChannelMappingData != undefined && productChannelMappingData.pcid != null) {
+                                                updateProductChannel(productChannelMappingData.pcid).then(resolve,reject);
+                                            }
+                                        });
+                                    }   
+                                });
+                            }
                         });
                     });     
                     
@@ -128,6 +146,27 @@ exports.handler = async (event, context) => {
         headers,
     };
 };
+
+function updateProductChannel(pcid) {
+    sql = "UPDATE ProductChannel SET status = 'inactive' where pcid = '" + pcid + "'";
+    return executeQuery(sql);
+}
+
+function getUserProductChannel(upid) {
+    sql = "SELECT * FROM UserProductChannel where upid = '" + upid + "'";
+    return executeQuery(sql).then(function(result) {
+        userProductChannelData = result[0];
+        console.log("userProductChannelData: ", userProductChannelData);
+    });
+}
+
+function getProductChannelMapping(upcid) {
+    sql = "SELECT * FROM ProductChannelMapping where upcid = '" + upcid + "'";
+    return executeQuery(sql).then(function(result) {
+        productChannelMappingData = result[0];
+        console.log("productChannelMappingData: ", productChannelMappingData);
+    });
+}
 
 function deleteUserMaster() {
     sql = "DELETE FROM UserMaster where userid = '" + username + "'";
@@ -274,7 +313,6 @@ function sendEmail(params) {
 };
 
 function generateWelcomeParam() {
-
     var param = {
         Destination: {
             ToAddresses: [username]
